@@ -14,7 +14,7 @@ class WebBasedPreviews:
     def gen(self):
         self.level_data = []
         im = self.image.convert("L")
-        im = im.resize((250,250),Image.ANTIALIAS)
+        im = im.resize((200,200),Image.ANTIALIAS)
         w,h = im.size
         im_arr = numpy.asarray(im, numpy.uint8)
 

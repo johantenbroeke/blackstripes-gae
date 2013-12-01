@@ -25,8 +25,10 @@ import cStringIO
 
 from google.appengine.ext import blobstore
 from google.appengine.ext.webapp import blobstore_handlers
+from google.appengine.api import images
 
 from gen_webbased_preview import WebBasedPreviews
+
 
 class MainHandler(webapp2.RequestHandler):
     def get(self):
@@ -40,26 +42,10 @@ class UploadHandler(blobstore_handlers.BlobstoreUploadHandler):
     def post(self):
         upload_files = self.get_uploads('file')  # 'file' is file upload field in the form
         blob_info = upload_files[0]
-        self.redirect('/preview/%s' % blob_info.key())
 
-class PreviewHandler(webapp2.RequestHandler):
-    def get(self,resource):
-        centers = [15,20,25,30,35]
-        contrast_settings = [1,2,3,4,5]
-        for c in centers:
-            for cs in contrast_settings:
-                self.response.out.write('<img border="0" src="http://'+self.request.host+'/blackstripes/'+str(c)+'/'+str(cs)+'/'+resource+'" width="250" height="250">\n')
-
-class BlackstripesServeHandler(webapp2.RequestHandler):
-    def get(self,center,contrast,resource):
-        
-        URL = str(urllib.unquote("http://"+self.request.host+"/serve/"+resource))
-
-        file = cStringIO.StringIO(urllib.urlopen(URL).read())
-        img = Image.open(file)
-
+        blob_reader = blobstore.BlobReader(blob_info.key())
+        img = Image.open(blob_reader)
         w,h = img.size
-
         if w < h:
             offset = int(round((h-w)/2.0))
             img = img.crop((0,offset,w,w+offset))
@@ -69,27 +55,36 @@ class BlackstripesServeHandler(webapp2.RequestHandler):
 
         _s = int(200),int(200)
         img = img.resize(_s,Image.BICUBIC)
+        
+        canvas = Image.new("RGBA",(1060,1060),"black")
 
-        pr = WebBasedPreviews(img,int(center),int(contrast))
-        img = pr.getImage()
+        centers = [15,20,25,30,35]
+        contrast_settings = [1,2,3,4,5]
+
+        counter = 0
+        row_counter = 0
+
+        for c in centers:
+            for cs in contrast_settings:
+
+                pr = WebBasedPreviews(img,int(c),int(cs))
+                p = pr.getImage()
+
+                canvas.paste(p,(counter*210 + 10,row_counter*210 + 10))
+                counter += 1
+                if counter%5 == 0:
+                    counter = 0
+                    row_counter += 1
 
         output = StringIO.StringIO()
-        img.save(output, format="png")
+        canvas.save(output, format="png")
         im_data = output.getvalue()
         output.close()
+
         self.response.headers["Content-Type"] = "image/png"
         self.response.out.write(im_data)
 
-class ServeHandler(blobstore_handlers.BlobstoreDownloadHandler):
-    def get(self, resource):
-        resource = str(urllib.unquote(resource))
-        blob_info = blobstore.BlobInfo.get(resource)
-        self.send_blob(blob_info)
-
 app = webapp2.WSGIApplication([
     ('/', MainHandler),
-    ('/blackstripes/([^/]+)?/([^/]+)?/([^/]+)?',BlackstripesServeHandler),
-    ('/preview/([^/]+)?',PreviewHandler),
     ('/upload', UploadHandler),
-    ('/serve/([^/]+)?', ServeHandler),
 ], debug=True)
